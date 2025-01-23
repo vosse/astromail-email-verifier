@@ -34,6 +34,10 @@ jobs:
       - name: Install NestJS CLI
         run: npm install -g @nestjs/cli
 
+      - name: Type check
+        run: npx tsc --noEmit
+
+
       - name: Build NestJS app
         run: npm run build
         env:
