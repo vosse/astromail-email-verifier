@@ -1,16 +1,15 @@
 name: Deploy Email Verifier Backend to DigitalOcean
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'astromail-email-verifier/**'
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
   workflow_dispatch:
 
 env:
   NODE_ENV: production
-  DATABASE_URL: ${{ secrets.DATABASE_URL }}
-  JWT_SECRET: ${{ secrets.JWT_SECRET }}
 
 jobs:
   deploy:
@@ -24,14 +23,15 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: '**/package-lock.json'
+          cache-dependency-path: './package-lock.json'
 
       - name: Install dependencies
-        working-directory: ./astromail-email-verifier
         run: npm ci
 
+      - name: Install NestJS CLI
+        run: npm install -g @nestjs/cli
+
       - name: Build NestJS app
-        working-directory: ./astromail-email-verifier
         run: npm run build
         env:
           NODE_ENV: production
@@ -42,12 +42,12 @@ jobs:
       - name: Generate deployment package
         run: |
           mkdir -p deploy-package
-          cp -r astromail-email-verifier/dist deploy-package/
-          cp -r astromail-email-verifier/node_modules deploy-package/
-          cp astromail-email-verifier/package.json deploy-package/
-          cp astromail-email-verifier/package-lock.json deploy-package/
-          [ -f "astromail-email-verifier/nest-cli.json" ] && cp astromail-email-verifier/nest-cli.json deploy-package/ || true
-          [ -f "astromail-email-verifier/.env.production" ] && cp astromail-email-verifier/.env.production deploy-package/ || true
+          cp -r dist deploy-package/
+          cp -r node_modules deploy-package/
+          cp package.json deploy-package/
+          cp package-lock.json deploy-package/
+          [ -f "nest-cli.json" ] && cp nest-cli.json deploy-package/ || true
+          [ -f ".env.production" ] && cp .env.production deploy-package/ || true
 
       - name: Deploy to DigitalOcean Droplet
         uses: appleboy/scp-action@master
