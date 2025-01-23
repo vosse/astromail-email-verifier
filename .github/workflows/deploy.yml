@@ -10,8 +10,6 @@ on:
 
 env:
   NODE_ENV: production
-  DATABASE_URL: ${{ secrets.DATABASE_URL }}
-  JWT_SECRET: ${{ secrets.JWT_SECRET }}
 
 jobs:
   deploy:
@@ -29,6 +27,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install NestJS CLI
+              run: npm install -g @nestjs/cli
 
       - name: Build NestJS app
         run: npm run build
