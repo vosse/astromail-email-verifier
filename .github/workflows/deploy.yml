@@ -26,7 +26,10 @@ jobs:
           cache-dependency-path: './package-lock.json'
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm ci
+          npm install punycode
+          npm install --save-dev @types/node
 
       - name: Install NestJS CLI
         run: npm install -g @nestjs/cli
