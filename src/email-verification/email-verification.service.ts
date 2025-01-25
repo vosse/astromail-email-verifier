@@ -153,6 +153,9 @@ export class EmailVerificationService {
           localPart,
         );
 
+        // const smtp = true;
+        // const catchall = false;
+
         result.technicalDetails.smtpValid = smtp;
         result.technicalDetails.catchAll = catchall;
         result.mailboxServerStatus = smtp ? 'Valid' : 'Invalid';
