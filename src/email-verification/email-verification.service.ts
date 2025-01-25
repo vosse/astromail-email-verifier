@@ -59,7 +59,7 @@ export class EmailVerificationService {
     }
 
     try {
-      const filePath = join(__dirname, '../../src/', 'webmail_domains.json');
+      const filePath = join(__dirname, '../..', 'webmail_domains.json');
       const content = await this.readFileAsync(filePath, 'utf8');
       this.webmailDomainsCache = JSON.parse(content);
       return this.webmailDomainsCache;

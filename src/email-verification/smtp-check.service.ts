@@ -245,7 +245,7 @@ export class SmtpCheckService {
 
         if (cached && cached.response !== 'catch-all') {
           return {
-            smtp: rcpt.message !== cached.response,
+            smtp: rcpt.code === 250,
             catchall: false,
           };
         }

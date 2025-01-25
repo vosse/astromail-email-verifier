@@ -43,6 +43,7 @@ jobs:
           cp package.json deploy-package/
           cp package-lock.json deploy-package/
           cp nest-cli.json deploy-package/
+          cp src/webmail_domains.json deploy-package/
           [ -f ".env" ] && cp .env deploy-package/ || true
 
       - name: Deploy to DigitalOcean Droplet
