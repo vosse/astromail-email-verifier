@@ -57,26 +57,119 @@ export class SmtpCheckService {
   }
 
   private async tryConnect(host: string, port: number): Promise<net.Socket> {
-    return new Promise((resolve, reject) => {
-      const socket = new net.Socket();
+    const socket: net.Socket | null = new net.Socket();
 
-      const timeoutId = setTimeout(() => {
-        socket.destroy();
-        reject(new Error(`Connection timeout to ${host}:${port}`));
-      }, this.timeout);
+    try {
+      return await new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          this.closeConnection(socket!);
+          reject(new Error(`Connection timeout to ${host}:${port}`));
+        }, this.timeout);
 
-      socket.connect(port, host, () => {
-        clearTimeout(timeoutId);
-        resolve(socket);
+        socket!.connect(port, host, () => {
+          clearTimeout(timeoutId);
+          resolve(socket!);
+        });
+
+        socket!.on('error', async (err) => {
+          await this.closeConnection(socket!);
+          reject(err);
+        });
       });
-
-      socket.on('error', (err) => {
-        clearTimeout(timeoutId);
-        socket.destroy();
-        reject(err);
-      });
-    });
+    } catch (error) {
+      await this.closeConnection(socket!);
+      throw error;
+    }
   }
+
+  // private async tryConnect(host: string, port: number): Promise<net.Socket> {
+  //   return new Promise((resolve, reject) => {
+  //     const socket = new net.Socket();
+
+  //     const timeoutId = setTimeout(() => {
+  //       socket.destroy();
+  //       reject(new Error(`Connection timeout to ${host}:${port}`));
+  //     }, this.timeout);
+
+  //     socket.connect(port, host, () => {
+  //       clearTimeout(timeoutId);
+  //       resolve(socket);
+  //     });
+
+  //     socket.on('error', (err) => {
+  //       clearTimeout(timeoutId);
+  //       socket.destroy();
+  //       reject(err);
+  //     });
+  //   });
+  // }
+
+  // private async closeConnection(socket: net.Socket) {
+  //   try {
+  //     await this.sendCommand(socket, 'QUIT');
+  //   } catch (error) {
+  //     this.logger.error(`QUIT failed: ${error.message}`);
+  //   } finally {
+  //     socket.destroy();
+  //   }
+  // }
+
+  private async closeConnection(
+    socket: net.Socket | tls.TLSSocket,
+  ): Promise<void> {
+    try {
+      if (socket.destroyed) return;
+
+      // Attempt graceful shutdown
+      this.logger.debug(`Closing connection to ${socket.remoteAddress}`);
+      const quitResponse = await this.sendCommand(socket, 'QUIT');
+
+      // Verify server acknowledges closure
+      if (quitResponse.code !== 221) {
+        this.logger.warn(
+          `Unexpected QUIT response: ${quitResponse.code} ${quitResponse.message}`,
+        );
+      }
+    } catch (error) {
+      // Handle common scenarios where connection drops before QUIT completes
+      if (!socket.destroyed) {
+        this.logger.debug(`QUIT error: ${error.message}`);
+      }
+    } finally {
+      // Ensure socket is destroyed even if QUIT fails
+      if (!socket.destroyed) {
+        socket.once('close', () => {
+          this.logger.debug('Connection closed');
+        });
+        socket.destroy();
+      }
+    }
+  }
+
+  // private async readResponse(socket: net.Socket): Promise<SmtpResponse> {
+  //   return new Promise((resolve, reject) => {
+  //     let buffer = '';
+  //     const timeoutId = setTimeout(() => {
+  //       socket.removeAllListeners('data');
+  //       reject(new Error('Response timeout'));
+  //     }, this.timeout);
+
+  //     socket.on('data', (data) => {
+  //       buffer += data.toString();
+  //       if (buffer.includes('\r\n')) {
+  //         const lines = buffer.split('\r\n');
+  //         const lastLine = lines[lines.length - 2]; // Last complete line
+
+  //         if (lastLine && /^\d{3}/.test(lastLine)) {
+  //           clearTimeout(timeoutId);
+  //           socket.removeAllListeners('data');
+  //           const code = parseInt(lastLine.substring(0, 3), 10);
+  //           resolve({ code, message: lastLine });
+  //         }
+  //       }
+  //     });
+  //   });
+  // }
 
   private async readResponse(socket: net.Socket): Promise<SmtpResponse> {
     return new Promise((resolve, reject) => {
@@ -88,16 +181,15 @@ export class SmtpCheckService {
 
       socket.on('data', (data) => {
         buffer += data.toString();
-        if (buffer.includes('\r\n')) {
-          const lines = buffer.split('\r\n');
-          const lastLine = lines[lines.length - 2]; // Last complete line
+        const lines = buffer.split('\r\n');
+        // Find the last line that matches the pattern
+        const finalLine = lines.reverse().find((line) => /^\d{3}\s/.test(line));
 
-          if (lastLine && /^\d{3}/.test(lastLine)) {
-            clearTimeout(timeoutId);
-            socket.removeAllListeners('data');
-            const code = parseInt(lastLine.substring(0, 3), 10);
-            resolve({ code, message: lastLine });
-          }
+        if (finalLine) {
+          clearTimeout(timeoutId);
+          socket.removeAllListeners('data');
+          const code = parseInt(finalLine.substring(0, 3), 10);
+          resolve({ code, message: finalLine });
         }
       });
     });
@@ -153,7 +245,16 @@ export class SmtpCheckService {
     if (!localPart || !domain) return { smtp: false, catchall: false };
 
     // Get MX records
-    const mxRecords = await resolveMx(domain);
+    let mxRecords = await resolveMx(domain);
+    if (!mxRecords?.length) {
+      // Fallback to A/AAAA records
+      const aRecords = await dns.promises.resolve(domain);
+      mxRecords = aRecords.map((record) => ({
+        exchange: record,
+        priority: 10,
+      }));
+    }
+
     if (!mxRecords?.length) {
       this.logger.debug(`No MX records found for ${domain}`);
       return { smtp: false, catchall: false };
@@ -276,3 +377,14 @@ export class SmtpCheckService {
     return { smtp: false, catchall: false };
   }
 }
+
+// // Split into two methods:
+// // 1. isEmailValid() - checks specific email
+// // 2. isCatchAllDomain() - checks domain-wide behavior
+// public async isEmailValid(email: string) {
+//   // Separate logic for email validation
+// }
+
+// public async isCatchAllDomain(domain: string) {
+//   // Dedicated session for catch-all detection
+// }
